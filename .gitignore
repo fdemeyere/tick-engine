@@ -1,0 +1,19 @@
+# Build folders
+cmake-build-debug/
+cmake-build-release/
+build/
+
+# Compiled binaries
+*.exe
+*.o
+*.obj
+
+# Python cache
+__pycache__/
+
+# Data files (your live stream logs)
+feed.txt
+prices_for_plot.csv
+
+# CLion junk
+.idea/
