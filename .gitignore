@@ -2,6 +2,7 @@
 cmake-build-debug/
 cmake-build-release/
 build/
+CMakeLists.txt
 
 # Compiled binaries
 *.exe
