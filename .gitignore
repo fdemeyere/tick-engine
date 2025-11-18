@@ -13,7 +13,7 @@ __pycache__/
 
 # Data files (your live stream logs)
 feed.txt
-prices_for_plot.csv
+*.csv
 
 # CLion junk
 .idea/
