@@ -11,6 +11,8 @@ struct Order{
     int qty;
 };
 
+std::mutex orders_mutex;
+
 bool parseOrder(const std::string& ord, char& c, int& qty) {
     const std::string err_msg = "Bad request";
     std::stringstream ss(ord);
@@ -42,17 +44,27 @@ void placeOrders(std::queue<Order>& orders) {
         if (!parseOrder(ord, c, qty)) {
             continue;
         }
-
         Order o = {c, qty};
+        std::lock_guard<std::mutex> lock(orders_mutex);
         orders.push(o);
     }
 }
 
 void executeOrders(std::queue<Order>& orders, double& balance, int& pos, const double last_price) {
-    while (!orders.empty()) {
-        Order ord = orders.front();
+    while (true) {
+        Order ord;
+        {
+            std::lock_guard<std::mutex> lock(orders_mutex);
+            if (orders.empty()) {
+                break;
+            }
+            ord = orders.front();
+            orders.pop();
+        }
+
         const char type = ord.type;
         const int qty = ord.qty;
+
         if ( type == 'b' && balance >= last_price * qty) {
             balance -= last_price * qty;
             pos += qty;
@@ -60,9 +72,9 @@ void executeOrders(std::queue<Order>& orders, double& balance, int& pos, const d
             balance += last_price * qty;
             pos -= qty;
         } else {
-            std::cout << "Not enough cash or shares" << "\n";
+            std::cout << "Not enough cash or shares\n";
         }
-        orders.pop();
+
         std::cout << "bal: " << balance << "\n" << "pos: " << pos << "\n";
     }
 }
@@ -111,4 +123,3 @@ int main() {
 
     return 0;
 }
-
