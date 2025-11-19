@@ -112,13 +112,13 @@ int main() {
 
         last_price = last_price.substr(1);
 
-        write_file << tick << comma << last_price << comma << pos << comma << bal << "\n" << std::flush;
         if (!active_trading) {
             trading_thread = std::thread(placeOrders, std::ref(orders));
             active_trading = true;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
         executeOrders(orders, bal, pos, std::stod(last_price));
+        write_file << tick << comma << last_price << comma << pos << comma << bal << "\n" << std::flush;
         tick++;
     }
     write_file.close();
