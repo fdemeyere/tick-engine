@@ -83,7 +83,7 @@ void executeOrders(OrderQueue& orders, double& balance, int& pos, const double l
 }
 
 int main() {
-    double balance = 1000;
+    double bal = 1000;
     int pos = 0;
 
     OrderQueue orders;
@@ -99,6 +99,8 @@ int main() {
 
     getline(read_file, line);
 
+    int tick = 0;
+
     while (getline(read_file, line)) {
         std::stringstream ss(line);
         std::string date;
@@ -110,14 +112,14 @@ int main() {
 
         last_price = last_price.substr(1);
 
-        write_file << last_price << "\n" << std::flush;
+        write_file << tick << comma << last_price << comma << pos << comma << bal << "\n" << std::flush;
         if (!active_trading) {
             trading_thread = std::thread(placeOrders, std::ref(orders));
             active_trading = true;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        executeOrders(orders, balance, pos, std::stod(last_price));
-
+        executeOrders(orders, bal, pos, std::stod(last_price));
+        tick++;
     }
     write_file.close();
     read_file.close();
