@@ -1,56 +1,69 @@
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
-import time
-import sys
 
+import time
+import threading
 
 feed = open("feed.txt")
-fig = plt.figure()
+# fig = plt.figure()
 
-axis = plt.axes(xlim=(0, 1),
-                ylim=(0, 1))
-line, = axis.plot([], [], lw=1)
+# axes = plt.axes()
+# line, = axes.plot([], [], lw=1)
 
 prices = []
+prices_lock = threading.Lock()
 
 
-def init():
+def init(line):
     line.set_data([], [])
     return line,
 
 
-def animate(i):
-    x = np.linspace(0, i, i+1)
-    y = prices[0:i+1]
-    line.set_data(x, y)
+def animate(i, line, axis):
+    with prices_lock:
+        if not prices:
+            return line,
+        x = np.arange(len(prices))
+        y = np.array(prices)
+        line.set_data(x, y)
 
-    curr_slice = prices[:i+1]
-    min_so_far = min(curr_slice)
-    max_so_far = max(curr_slice)
+    min_so_far = min(prices)
+    max_so_far = max(prices)
 
-    axis.set_xlim(0, i)
+    axis.set_xlim(0, len(y) - 1)
     axis.set_ylim(min_so_far*0.8, max_so_far*1.2)
 
     return line,
 
 
-def frame_generator():
-    i = 0
+def reader_thread_func():
     while True:
-        token = feed.readline()
-        if not token:
+        row = feed.readline()
+        if not row:
             time.sleep(0.5)
             continue
-        price = float(token)
-        prices.append(price)
-        yield i
-        i += 1
+
+        parts = row.split(",")
+        price = float(parts[1])
+
+        with prices_lock:
+            prices.append(price)
 
 
+def main():
+    t = threading.Thread(target=reader_thread_func, daemon=True)
+    t.start()
 
-anim = FuncAnimation(fig, animate, init_func = init,
-                     frames=frame_generator(), interval=0, blit=True)
-plt.show()
+    fig, axis = plt.subplots()
+    line, = axis.plot([], [], lw=1)
 
-feed.close()
+    anim = FuncAnimation(fig, animate, init_func=lambda: init(line),
+                         fargs=(line, axis), interval=800, blit=True)
+
+    plt.show()
+    feed.close()
+
+
+if __name__ == "__main__":
+    main()
