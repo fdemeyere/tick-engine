@@ -6,16 +6,19 @@
 #include <thread>
 #include <queue>
 
-struct Order{
+struct Order {
     char type;
     int qty;
 };
 
-std::mutex orders_mutex;
+struct OrderQueue {
+    std::queue<Order> queue;
+    std::mutex mutex;
+};
 
-bool parseOrder(const std::string& ord, char& c, int& qty) {
+bool parseOrder(const std::string& cmd, char& c, int& qty) {
     const std::string err_msg = "Bad request";
-    std::stringstream ss(ord);
+    std::stringstream ss(cmd);
     std::string type, str_qty;
 
     std::getline(ss, type, ' ');
@@ -36,30 +39,30 @@ bool parseOrder(const std::string& ord, char& c, int& qty) {
     return true;
 }
 
-void placeOrders(std::queue<Order>& orders) {
-    std::string ord;
+void placeOrders(OrderQueue& orders) {
+    std::string cmd;
     char c;
     int qty;
-    while (std::getline(std::cin, ord)) {
-        if (!parseOrder(ord, c, qty)) {
+    while (std::getline(std::cin, cmd)) {
+        if (!parseOrder(cmd, c, qty)) {
             continue;
         }
-        Order o = {c, qty};
-        std::lock_guard<std::mutex> lock(orders_mutex);
-        orders.push(o);
+        Order ord = {c, qty};
+        std::lock_guard<std::mutex> lock(orders.mutex);
+        orders.queue.push(ord);
     }
 }
 
-void executeOrders(std::queue<Order>& orders, double& balance, int& pos, const double last_price) {
+void executeOrders(OrderQueue& orders, double& balance, int& pos, const double last_price) {
     while (true) {
         Order ord;
         {
-            std::lock_guard<std::mutex> lock(orders_mutex);
-            if (orders.empty()) {
+            std::lock_guard<std::mutex> lock(orders.mutex);
+            if (orders.queue.empty()) {
                 break;
             }
-            ord = orders.front();
-            orders.pop();
+            ord = orders.queue.front();
+            orders.queue.pop();
         }
 
         const char type = ord.type;
@@ -83,7 +86,7 @@ int main() {
     double balance = 1000;
     int pos = 0;
 
-    std::queue<Order> orders;
+    OrderQueue orders;
 
     std::string last_price;
     bool active_trading = false;
