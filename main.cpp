@@ -6,52 +6,72 @@
 #include <thread>
 #include <queue>
 
-bool placeOrder(const std::string& cmd, double& balance, int& pos, const std::string& last_price) {
-    std::string bad_type_msg = "Bad type. Must be 'b' or 's'";
+struct Order{
+    char type;
+    int qty;
+};
 
-    std::stringstream ss(cmd);
+bool parseOrder(const std::string& ord, char& c, int& qty) {
+    const std::string err_msg = "Bad request";
+    std::stringstream ss(ord);
     std::string type, str_qty;
 
     std::getline(ss, type, ' ');
     std::getline(ss, str_qty);
-    const int order_qty = std::stoi(str_qty);
-    const int int_last_price = std::stoi(last_price);
-    const int market_value = pos * int_last_price;
 
     if (type.size() != 1) {
-        std::cout << bad_type_msg;
+        std::cout << err_msg;
         return false;
     }
 
-    char c = std::tolower(type[0]);
+    c = type[0];
+    if (c != 'b' && c != 's') {
+        std::cout << err_msg;
+        return false;
+    }
 
-    if (c == 'b' && balance >= int_last_price * order_qty) {
-        balance -= int_last_price * order_qty;
-        pos += order_qty;
-        return true;
-    }
-    if (c == 's' && pos >= order_qty) {
-        balance += int_last_price * order_qty;
-        pos -= order_qty;
-        return true;
-    }
-    std::cout << bad_type_msg;
-    return false;
+    qty = std::stoi(str_qty);
+    return true;
 }
 
-void getStdin(double balance, int pos, std::string& last_price) {
-    std::string cmd;
-    while (std::getline(std::cin, cmd)) {
-        placeOrder(cmd, balance, pos, last_price);
+void placeOrders(std::queue<Order>& orders) {
+    std::string ord;
+    char c;
+    int qty;
+    while (std::getline(std::cin, ord)) {
+        if (!parseOrder(ord, c, qty)) {
+            continue;
+        }
+
+        Order o = {c, qty};
+        orders.push(o);
+    }
+}
+
+void executeOrders(std::queue<Order>& orders, double& balance, int& pos, const double last_price) {
+    while (!orders.empty()) {
+        Order ord = orders.front();
+        const char type = ord.type;
+        const int qty = ord.qty;
+        if ( type == 'b' && balance >= last_price * qty) {
+            balance -= last_price * qty;
+            pos += qty;
+        } else if (type == 's' && pos >= qty) {
+            balance += last_price * qty;
+            pos -= qty;
+        } else {
+            std::cout << "Not enough cash or shares" << "\n";
+        }
+        orders.pop();
         std::cout << "bal: " << balance << "\n" << "pos: " << pos << "\n";
     }
 }
 
 int main() {
-    double starting_balance = 1000;
-    int starting_pos = 0;
+    double balance = 1000;
+    int pos = 0;
 
-
+    std::queue<Order> orders;
 
     std::string last_price;
     bool active_trading = false;
@@ -77,10 +97,12 @@ int main() {
 
         write_file << last_price << "\n" << std::flush;
         if (!active_trading) {
-            trading_thread = std::thread(getStdin, starting_balance, starting_pos, std::ref(last_price));
+            trading_thread = std::thread(placeOrders, std::ref(orders));
             active_trading = true;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
+        executeOrders(orders, balance, pos, std::stod(last_price));
+
     }
     write_file.close();
     read_file.close();
