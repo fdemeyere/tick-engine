@@ -6,6 +6,7 @@
 #include <thread>
 #include <queue>
 #include <condition_variable>
+#include <optional>
 
 struct Order {
     char type;
@@ -16,6 +17,7 @@ struct OrderQueue {
     std::queue<Order> queue;
     std::mutex mutex;
     std::condition_variable cv;
+    bool done = false;
 };
 
 struct TradingState {
@@ -27,8 +29,7 @@ struct TradingState {
     TradingState(const double last_price, const double bal, const int pos) : last_price(last_price), bal(bal), pos(pos) {}
 };
 
-bool parseOrder(const std::string& cmd, char& c, int& qty) {
-    const std::string err_msg = "Bad request";
+std::optional<Order> parseOrder(const std::string& cmd) {
     std::stringstream ss(cmd);
     std::string type, str_qty;
 
@@ -36,32 +37,46 @@ bool parseOrder(const std::string& cmd, char& c, int& qty) {
     std::getline(ss, str_qty);
 
     if (type.size() != 1) {
-        std::cout << err_msg;
-        return false;
+        return std::nullopt;
     }
 
-    c = type[0];
+    char c = type[0];
     if (c != 'b' && c != 's') {
-        std::cout << err_msg;
-        return false;
+        return std::nullopt;
     }
 
-    qty = std::stoi(str_qty);
-    return true;
+    int qty;
+    try {
+        qty = std::stoi(str_qty);
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    Order ord = {c, qty};
+    return ord;
 }
 
 void placeOrders(OrderQueue& orders) {
+    const std::string err_msg = "Bad request\n";
+
     std::string cmd;
-    char c;
-    int qty;
     while (std::getline(std::cin, cmd)) {
-        if (!parseOrder(cmd, c, qty)) {
+        if (cmd.empty()) {
+            {
+                std::lock_guard<std::mutex> lock(orders.mutex);
+                orders.done = true;
+            }
+            orders.cv.notify_one();
+            return;
+        }
+        std::optional<Order> ord = parseOrder(cmd);
+        if (!ord.has_value()) {
+            std::cout << err_msg;
             continue;
         }
-        Order ord = {c, qty};
+
         {
             std::lock_guard<std::mutex> lock(orders.mutex);
-            orders.queue.push(ord);
+            orders.queue.push(ord.value());
         }
         orders.cv.notify_one();
     }
@@ -69,10 +84,12 @@ void placeOrders(OrderQueue& orders) {
 
 void executeOrders(OrderQueue& orders, TradingState& trading_state) {
     while (true) {
-        Order ord;
+        Order ord = {};
         {
             std::unique_lock<std::mutex> lock(orders.mutex);
-            orders.cv.wait(lock, [&orders] { return !orders.queue.empty(); });
+            orders.cv.wait(lock, [&orders] { return !orders.queue.empty() || orders.done;});
+
+            if (orders.done && orders.queue.empty()) break;
 
             ord = orders.queue.front();
             orders.queue.pop();
@@ -108,8 +125,8 @@ int main() {
     std::thread producer_thread;
 
     std::string line;
-    // std::ifstream read_file("../HistoricalData_1763459211275.csv"); // Apple
-    std::ifstream read_file("../HistoricalData_1763676611258.csv"); // Amazon
+    std::ifstream read_file("../HistoricalData_1763459211275.csv"); // Apple
+    // std::ifstream read_file("../HistoricalData_1763676611258.csv"); // Amazon
     std::ofstream write_file("../feed.txt");
 
     getline(read_file, line);
@@ -133,6 +150,7 @@ int main() {
         if (!active_trading) {
             consumer_thread = std::thread(executeOrders, std::ref(orders), std::ref(trading_state));
             producer_thread = std::thread(placeOrders, std::ref(orders));
+            producer_thread.detach();
             active_trading = true;
         }
 
@@ -145,8 +163,14 @@ int main() {
     write_file.close();
     read_file.close();
 
-    producer_thread.join();
-    consumer_thread.join();
+    if (active_trading) {
+        {
+            std::lock_guard<std::mutex> lock(orders.mutex);
+            orders.done = true;
+        }
+        orders.cv.notify_one();
 
+        consumer_thread.join();
+    }
     return 0;
 }
